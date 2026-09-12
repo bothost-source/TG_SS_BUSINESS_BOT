@@ -53,18 +53,28 @@ function richMessage(html) {
   return { html };
 }
 
-async function renderScreen(bot, chatId, messageId, text, keyboard) {
+function richMessageMarkdown(markdown) {
+  return { markdown };
+}
+
+function escapeMarkdown(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/([|\\`*_[\]])/g, '\\$1');
+}
+
+async function renderScreen(bot, chatId, messageId, text, keyboard, format = 'html') {
   const reply_markup = keyboard ? { inline_keyboard: keyboard } : undefined;
+  const rich_message = format === 'markdown' ? richMessageMarkdown(text) : richMessage(text);
 
   if (messageId) {
     try {
       const result = await bot.api.editMessageText({
         chat_id: chatId,
         message_id: messageId,
-        rich_message: richMessage(text),
+        rich_message,
         reply_markup,
       });
-      
+
       return typeof result === 'object' && result.message_id ? result.message_id : messageId;
     } catch (err) {
       const msg = (err && err.message) || '';
@@ -78,7 +88,7 @@ async function renderScreen(bot, chatId, messageId, text, keyboard) {
 
   const sent = await bot.api.sendRichMessage({
     chat_id: chatId,
-    rich_message: richMessage(text),
+    rich_message,
     reply_markup,
   });
   return sent.message_id;
@@ -129,6 +139,8 @@ module.exports = {
   mentionHtml,
   escapeHtml,
   richMessage,
+  richMessageMarkdown,
+  escapeMarkdown,
   renderScreen,
   mainMenuKeyboard,
   developerMenuKeyboard,
