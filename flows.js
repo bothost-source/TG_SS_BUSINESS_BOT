@@ -43,8 +43,8 @@ function isDeveloper(userId) {
 // ---------------------------------------------------------------------------
 // Screen renderer shortcut bound to a session
 // ---------------------------------------------------------------------------
-async function show(bot, session, text, keyboard) {
-  const messageId = await tg.renderScreen(bot, session.chatId, session.messageId, text, keyboard);
+async function show(bot, session, text, keyboard, format = 'html') {
+  const messageId = await tg.renderScreen(bot, session.chatId, session.messageId, text, keyboard, format);
   session.messageId = messageId;
 }
 
@@ -118,12 +118,14 @@ async function showSetupMenu(bot, session, from) {
     `<b>Business Setup</b>\n\n` +
     `Brand name: ${owner.brandName ? tg.escapeHtml(owner.brandName) : 'Not set'}\n` +
     `About: ${owner.about ? tg.escapeHtml(owner.about) : 'Not set'}\n` +
+    `Profile picture: ${owner.profilePicture ? 'Set' : 'Not set'}\n` +
     `Services configured: ${owner.services.length}\n\n` +
     `Use the buttons below to complete your profile.`;
 
   const keyboard = [
     [{ text: 'Set Brand Name', callback_data: 'setup:brand' }],
     [{ text: 'Set About', callback_data: 'setup:about' }],
+    [{ text: 'Set Profile Picture', callback_data: 'setup:photo' }],
     [{ text: 'My Services', callback_data: 'services:view' }],
     [{ text: 'My Destinations', callback_data: 'dest:view' }],
     [{ text: 'Generate Rating Link', callback_data: 'link:start' }],
@@ -152,6 +154,39 @@ async function handleSetupTextInput(bot, session, from, text) {
 
   resetAwaiting(session);
   await showSetupMenu(bot, session, from);
+}
+
+async function promptProfilePicture(bot, session) {
+  session.awaiting = 'setup_photo';
+  const text =
+    `Send a photo to use as your public profile picture (optional).\n\n` +
+    `Send "-" to skip, or to remove your current picture.`;
+  await show(bot, session, text, [tg.backButton('setup:start')]);
+}
+
+async function handleSetupPhotoInput(bot, session, from, fileId) {
+  const owner = await getOrCreateOwner(from);
+  owner.profilePicture = fileId;
+  owner.updatedAt = new Date();
+  await owner.save();
+
+  resetAwaiting(session);
+  await showSetupMenu(bot, session, from);
+}
+
+async function handleSetupPhotoTextInput(bot, session, from, text) {
+  if (text.trim() === '-') {
+    const owner = await getOrCreateOwner(from);
+    owner.profilePicture = null;
+    owner.updatedAt = new Date();
+    await owner.save();
+
+    resetAwaiting(session);
+    await showSetupMenu(bot, session, from);
+    return;
+  }
+  // Any other text while a photo is expected -- re-show the prompt.
+  await promptProfilePicture(bot, session);
 }
 
 // ===========================================================================
@@ -834,14 +869,16 @@ async function runDiscoverySearch(bot, session, from, query) {
 }
 
 async function showDeveloperFallback(bot, session, query) {
-  let text =
-    `No matching provider was found for "${tg.escapeHtml(query)}".\n\n` +
-    `Developer / Owner:\n${tg.escapeHtml(config.DEVELOPER_DISPLAY_NAME)}`;
+  const text =
+    `No registered provider matches "${tg.escapeHtml(query)}" yet.\n\n` +
+    `You're welcome to reach out to the developer below — they can point you ` +
+    `in the right direction or let you know if this service gets added.`;
 
   const keyboard = [];
   if (config.DEVELOPER_USERNAME) {
-    keyboard.push([{ text: `@${config.DEVELOPER_USERNAME}`, url: `https://t.me/${config.DEVELOPER_USERNAME}` }]);
     keyboard.push([{ text: 'Contact Developer', url: `https://t.me/${config.DEVELOPER_USERNAME}` }]);
+  } else {
+    keyboard.push([{ text: 'Contact Developer (not configured)', callback_data: 'noop' }]);
   }
   keyboard.push(tg.backButton('menu:main'));
 
@@ -855,11 +892,16 @@ async function renderDiscoveryProfile(bot, session) {
   const avg = owner.ratingCount ? (owner.ratingSum / owner.ratingCount).toFixed(1) : 'No ratings yet';
   const services = (owner.services || []).map((s) => s.name).join(', ') || 'Not listed';
   const brandOrName = owner.brandName || `${owner.firstName || ''} ${owner.lastName || ''}`.trim() || 'Provider';
+  const about = owner.about || 'Not provided';
+
+  const service = tg.escapeMarkdown(services);
+  const brand = tg.escapeMarkdown(brandOrName);
+  const aboutCell = tg.escapeMarkdown(about);
 
   const text =
-    `<b>${tg.escapeHtml(brandOrName)}</b>\n\n` +
-    `About: ${owner.about ? tg.escapeHtml(owner.about) : 'Not provided'}\n` +
-    `Services: ${tg.escapeHtml(services)}\n` +
+    `| Service | Brand | About |\n` +
+    `| --- | --- | --- |\n` +
+    `| ${service} | ${brand} | ${aboutCell} |\n\n` +
     `Average rating: ${avg}${owner.ratingCount ? ` (${owner.reviewCount} reviews)` : ''}\n\n` +
     `Result ${index + 1} of ${results.length}`;
 
@@ -873,7 +915,7 @@ async function renderDiscoveryProfile(bot, session) {
   keyboard.push([tg.profileButton(owner, 'Contact / Start a Project')]);
   keyboard.push(tg.backButton('menu:main'));
 
-  await show(bot, session, text, keyboard);
+  await show(bot, session, text, keyboard, 'markdown');
 }
 
 async function discoveryNav(bot, session, direction) {
@@ -1012,6 +1054,9 @@ module.exports = {
   showSetupMenu,
   promptSetupField,
   handleSetupTextInput,
+  promptProfilePicture,
+  handleSetupPhotoInput,
+  handleSetupPhotoTextInput,
   showServices,
   promptAddService,
   handleServiceAddInput,
