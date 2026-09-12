@@ -64,6 +64,7 @@ async function main() {
     if (data === 'profile:view') return flows.showSetupMenu(bot, session, from);
     if (data === 'setup:brand') return flows.promptSetupField(bot, session, 'brand');
     if (data === 'setup:about') return flows.promptSetupField(bot, session, 'about');
+    if (data === 'setup:photo') return flows.promptProfilePicture(bot, session);
 
     // Services
     if (data === 'services:view') return flows.showServices(bot, session, from);
@@ -165,6 +166,10 @@ async function main() {
       }
 
       if (msg.photo) {
+        if (session.awaiting === 'setup_photo') {
+          const best = msg.photo[msg.photo.length - 1];
+          return await flows.handleSetupPhotoInput(bot, session, from, best.file_id);
+        }
         if (session.data.review && session.awaiting === null) {
           const best = msg.photo[msg.photo.length - 1];
           return await flows.handleProofPhoto(bot, session, best.file_id);
@@ -179,6 +184,8 @@ async function main() {
         case 'setup_brand':
         case 'setup_about':
           return await flows.handleSetupTextInput(bot, session, from, text);
+        case 'setup_photo':
+          return await flows.handleSetupPhotoTextInput(bot, session, from, text);
         case 'service_add':
           return await flows.handleServiceAddInput(bot, session, from, text);
         case 'rate_service_custom':
