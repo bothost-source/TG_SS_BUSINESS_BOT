@@ -70,6 +70,7 @@ async function handleStart(bot, msg, payload) {
 
 async function showMainMenu(bot, session, from) {
   resetAwaiting(session);
+  await clearDiscoveryPhoto(bot, session);
   const devLine = isDeveloper(from.id)
     ? '\n\nYou are recognized as the developer of this bot.'
     : '';
@@ -116,6 +117,7 @@ async function showSetupMenu(bot, session, from) {
   const owner = await getOrCreateOwner(from);
   const text =
     `<b>Business Setup</b>\n\n` +
+    `Your Telegram ID: ${owner.telegramId} (only needed to be recognized as the developer)\n\n` +
     `Brand name: ${owner.brandName ? tg.escapeHtml(owner.brandName) : 'Not set'}\n` +
     `About: ${owner.about ? tg.escapeHtml(owner.about) : 'Not set'}\n` +
     `Profile picture: ${owner.profilePicture ? 'Set' : 'Not set'}\n` +
@@ -728,21 +730,34 @@ async function showDeveloperMenu(bot, session) {
 }
 
 async function showDeveloperStats(bot, session) {
-  const [users, owners, groups, channels, reviews] = await Promise.all([
-    db.BotUser.countDocuments(),
-    db.Owner.countDocuments(),
-    db.Destination.countDocuments({ type: 'group' }),
-    db.Destination.countDocuments({ type: 'channel' }),
-    db.Review.countDocuments({ status: 'published' }),
-  ]);
+  const [users, ownerProfilesStarted, configuredBusinesses, groups, channels, reviews, topSearches] =
+    await Promise.all([
+      db.BotUser.countDocuments(),
+      db.Owner.countDocuments(),
+      db.Owner.countDocuments({ $or: [{ brandName: { $ne: null } }, { 'services.0': { $exists: true } }] }),
+      db.Destination.countDocuments({ type: 'group' }),
+      db.Destination.countDocuments({ type: 'channel' }),
+      db.Review.countDocuments({ status: 'published' }),
+      db.SearchLog.aggregate([
+        { $group: { _id: '$normalizedQuery', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+      ]),
+    ]);
+
+  const searchLines = topSearches.length
+    ? topSearches.map((s, i) => `${i + 1}. ${tg.escapeHtml(s._id)} — ${s.count}`).join('\n')
+    : 'No searches logged yet.';
 
   const text =
     `<b>Statistics</b>\n\n` +
     `Users: ${users}\n` +
-    `Provider profiles: ${owners}\n` +
+    `Businesses registered: ${configuredBusinesses}\n` +
+    `Profiles started (incl. incomplete): ${ownerProfilesStarted}\n` +
     `Groups: ${groups}\n` +
     `Channels: ${channels}\n` +
-    `Published reviews: ${reviews}`;
+    `Published reviews: ${reviews}\n\n` +
+    `<b>Top Searches</b>\n${searchLines}`;
 
   await show(bot, session, text, [tg.backButton('dev:menu')]);
 }
@@ -843,9 +858,26 @@ async function promptDiscoverySearch(bot, session) {
   ]);
 }
 
+async function clearDiscoveryPhoto(bot, session) {
+  const disc = session.data.discovery;
+  if (disc && disc.photoMessageId) {
+    try {
+      await bot.api.deleteMessage({ chat_id: session.chatId, message_id: disc.photoMessageId });
+    } catch (err) {
+      // best effort -- message may already be gone
+    }
+  }
+}
+
 async function runDiscoverySearch(bot, session, from, query) {
   resetAwaiting(session);
   const q = query.trim().slice(0, 200);
+
+  await clearDiscoveryPhoto(bot, session);
+
+  db.SearchLog.create({ query: q, normalizedQuery: q.toLowerCase(), telegramId: from.id }).catch((err) =>
+    console.error('Failed to log search query:', err.message)
+  );
 
   const owners = await db.Owner.aggregate([
     { $match: { 'services.name': { $regex: q, $options: 'i' } } },
@@ -858,7 +890,7 @@ async function runDiscoverySearch(bot, session, from, query) {
     { $limit: 25 },
   ]);
 
-  session.data.discovery = { query: q, results: owners, index: 0 };
+  session.data.discovery = { query: q, results: owners, index: 0, photoMessageId: null, photoOwnerId: null };
 
   if (owners.length === 0) {
     await showDeveloperFallback(bot, session, q);
@@ -885,6 +917,36 @@ async function showDeveloperFallback(bot, session, query) {
   await show(bot, session, text, keyboard);
 }
 
+async function syncDiscoveryPhoto(bot, session, owner) {
+  const disc = session.data.discovery;
+  if (!disc) return;
+  const ownerId = String(owner._id);
+  const currentPicture = owner.profilePicture || null;
+
+  if (disc.photoOwnerId === ownerId) return; // already correct for this owner, nothing to do
+
+  if (disc.photoMessageId) {
+    try {
+      await bot.api.deleteMessage({ chat_id: session.chatId, message_id: disc.photoMessageId });
+    } catch (err) {
+      // best effort -- message may already be gone
+    }
+    disc.photoMessageId = null;
+  }
+
+  if (currentPicture) {
+    try {
+      const sent = await bot.api.sendPhoto({ chat_id: session.chatId, photo: currentPicture });
+      disc.photoMessageId = sent.message_id;
+    } catch (err) {
+      console.error('Failed to send provider profile picture:', err.message);
+      disc.photoMessageId = null;
+    }
+  }
+
+  disc.photoOwnerId = ownerId;
+}
+
 async function renderDiscoveryProfile(bot, session) {
   const { results, index } = session.data.discovery;
   const owner = results[index];
@@ -894,9 +956,11 @@ async function renderDiscoveryProfile(bot, session) {
   const brandOrName = owner.brandName || `${owner.firstName || ''} ${owner.lastName || ''}`.trim() || 'Provider';
   const about = owner.about || 'Not provided';
 
-  const service = tg.escapeMarkdown(services);
-  const brand = tg.escapeMarkdown(brandOrName);
-  const aboutCell = tg.escapeMarkdown(about);
+  const flattenForTable = (str) => str.replace(/\r?\n+/g, ' ').trim();
+
+  const service = tg.escapeMarkdown(flattenForTable(services));
+  const brand = tg.escapeMarkdown(flattenForTable(brandOrName));
+  const aboutCell = tg.escapeMarkdown(flattenForTable(about));
 
   const text =
     `| Service | Brand | About |\n` +
@@ -916,6 +980,7 @@ async function renderDiscoveryProfile(bot, session) {
   keyboard.push(tg.backButton('menu:main'));
 
   await show(bot, session, text, keyboard, 'markdown');
+  await syncDiscoveryPhoto(bot, session, owner);
 }
 
 async function discoveryNav(bot, session, direction) {
