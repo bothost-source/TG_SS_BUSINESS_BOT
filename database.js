@@ -142,6 +142,21 @@ const feedbackSchema = new mongoose.Schema(
 const Feedback = mongoose.model('Feedback', feedbackSchema);
 
 // ---------------------------------------------------------------------------
+// SearchLog: every discovery query, for developer "popular searches" stats.
+// ---------------------------------------------------------------------------
+const searchLogSchema = new mongoose.Schema(
+  {
+    query: { type: String, required: true },
+    normalizedQuery: { type: String, required: true, index: true }, // lowercased, for grouping
+    telegramId: { type: Number, default: null },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { collection: 'search_logs' }
+);
+
+const SearchLog = mongoose.model('SearchLog', searchLogSchema);
+
+// ---------------------------------------------------------------------------
 // Connection
 // ---------------------------------------------------------------------------
 async function connect() {
@@ -158,4 +173,5 @@ module.exports = {
   Review,
   BotUser,
   Feedback,
+  SearchLog,
 };
