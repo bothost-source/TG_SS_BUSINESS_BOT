@@ -17,6 +17,7 @@ const ownerSchema = new mongoose.Schema(
     lastName: { type: String, default: null },
     brandName: { type: String, default: null },
     about: { type: String, default: null },
+    profilePicture: { type: String, default: null }, // Telegram file_id, optional
     services: { type: [serviceSchema], default: [] },
     ratingCount: { type: Number, default: 0 },
     ratingSum: { type: Number, default: 0 }, // avg = ratingSum / ratingCount
