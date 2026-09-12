@@ -38,6 +38,13 @@ async function main() {
       await routeCallback(bot, session, from, data);
     } catch (err) {
       console.error('Error handling callback:', data, err);
+      try {
+        await flows.show(bot, session, `Something went wrong handling that. Please try again.`, [
+          tg.backButton('menu:main'),
+        ]);
+      } catch (_) {
+        // if even the error message fails to send, there's nothing more we can do
+      }
     }
   });
 
@@ -212,6 +219,13 @@ async function main() {
       }
     } catch (err) {
       console.error('Error handling message:', err);
+      try {
+        await flows.show(bot, session, `Something went wrong processing that. Please try again.`, [
+          tg.backButton('menu:main'),
+        ]);
+      } catch (_) {
+        // if even the error message fails to send, there's nothing more we can do
+      }
     }
   });
 
