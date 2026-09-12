@@ -39,7 +39,8 @@ async function main() {
     } catch (err) {
       console.error('Error handling callback:', data, err);
       try {
-        await flows.show(bot, session, `Something went wrong handling that. Please try again.`, [
+        const detail = String(err && err.message ? err.message : err).slice(0, 300);
+        await flows.show(bot, session, `Something went wrong:\n${tg.escapeHtml(detail)}`, [
           tg.backButton('menu:main'),
         ]);
       } catch (_) {
@@ -220,7 +221,8 @@ async function main() {
     } catch (err) {
       console.error('Error handling message:', err);
       try {
-        await flows.show(bot, session, `Something went wrong processing that. Please try again.`, [
+        const detail = String(err && err.message ? err.message : err).slice(0, 300);
+        await flows.show(bot, session, `Something went wrong:\n${tg.escapeHtml(detail)}`, [
           tg.backButton('menu:main'),
         ]);
       } catch (_) {
