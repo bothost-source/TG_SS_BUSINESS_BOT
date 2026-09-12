@@ -115,14 +115,19 @@ async function getOrCreateOwner(from) {
 async function showSetupMenu(bot, session, from) {
   resetAwaiting(session);
   const owner = await getOrCreateOwner(from);
+
+  const flatten = (str) => String(str).replace(/\r?\n+/g, ' ').trim();
+  const brandCell = tg.escapeMarkdown(flatten(owner.brandName || 'Not set'));
+  const aboutCell = tg.escapeMarkdown(flatten(owner.about || 'Not set'));
+
   const text =
-    `<b>Business Setup</b>\n\n` +
-    `Your Telegram ID: ${owner.telegramId} (only needed to be recognized as the developer)\n\n` +
-    `Brand name: ${owner.brandName ? tg.escapeHtml(owner.brandName) : 'Not set'}\n` +
-    `About: ${owner.about ? tg.escapeHtml(owner.about) : 'Not set'}\n` +
-    `Profile picture: ${owner.profilePicture ? 'Set' : 'Not set'}\n` +
-    `Services configured: ${owner.services.length}\n\n` +
-    `Use the buttons below to complete your profile.`;
+    `| Field | Value |\n` +
+    `| --- | --- |\n` +
+    `| Telegram ID | ${owner.telegramId} |\n` +
+    `| Brand Name | ${brandCell} |\n` +
+    `| About | ${aboutCell} |\n` +
+    `| Profile Picture | ${owner.profilePicture ? 'Set' : 'Not set'} |\n` +
+    `| Services | ${owner.services.length} |`;
 
   const keyboard = [
     [{ text: 'Set Brand Name', callback_data: 'setup:brand' }],
@@ -134,7 +139,7 @@ async function showSetupMenu(bot, session, from) {
     tg.backButton('menu:main'),
   ];
 
-  await show(bot, session, text, keyboard);
+  await show(bot, session, text, keyboard, 'markdown');
 }
 
 async function promptSetupField(bot, session, field) {
@@ -436,14 +441,20 @@ async function startClientRatingFlow(bot, session, from, token) {
     proofMedia: [],
   };
 
+  const flatten = (str) => String(str).replace(/\r?\n+/g, ' ').trim();
   const brandOrName = owner.brandName || tg.displayName(owner);
-  const text =
-    `<b>You are reviewing ${tg.escapeHtml(brandOrName)}</b>\n\n` +
-    `You'll be asked to pick a service, describe the project, share your ` +
-    `experience, and give a star rating. Your review publishes automatically ` +
-    `once you confirm — there is no approval step.`;
+  const services = (owner.services || []).map((s) => s.name).join(', ') || 'Not listed';
 
-  await show(bot, session, text, [[{ text: 'Start', callback_data: 'rate:begin' }]]);
+  const brandCell = tg.escapeMarkdown(flatten(brandOrName));
+  const servicesCell = tg.escapeMarkdown(flatten(services));
+
+  const text =
+    `| Reviewing | Services Offered |\n` +
+    `| --- | --- |\n` +
+    `| ${brandCell} | ${servicesCell} |\n\n` +
+    `Your review publishes automatically once confirmed.`;
+
+  await show(bot, session, text, [[{ text: 'Start', callback_data: 'rate:begin' }]], 'markdown');
 }
 
 async function showServiceSelection(bot, session) {
