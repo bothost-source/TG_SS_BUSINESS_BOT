@@ -29,7 +29,7 @@ function profileButton(entity, label) {
   if (entity.username) {
     return { text: label, url: `https://t.me/${entity.username}` };
   }
- 
+
   return { text: `${label} (no public username)`, callback_data: 'noop' };
 }
 
@@ -130,6 +130,51 @@ function starKeyboard(selected) {
   return [row, [{ text: 'Continue', callback_data: 'rate:star:confirm' }]];
 }
 
+// -- Inline mode -----------------------------------------------------------
+// Lets someone type "@yourbotusername" (with no query text, or any query
+// text) in any chat and see a result they can tap to send. Tapping the
+// result sends a message with a button that deep-links back into this bot
+// and lands the tapper straight on the "Create Your Business" setup flow
+// (same entry point as the /start setup:start button), since inline
+// results can't trigger a callback_query in someone else's chat directly.
+async function answerInlineQuery(bot, inlineQueryId, results, options = {}) {
+  return bot.api.answerInlineQuery({
+    inline_query_id: inlineQueryId,
+    results,
+    cache_time: options.cacheTime ?? 0,
+    is_personal: options.isPersonal ?? true,
+  });
+}
+
+function inlineArticleResult(id, title, messageText, options = {}) {
+  return {
+    type: 'article',
+    id,
+    title,
+    description: options.description,
+    thumbnail_url: options.thumbnailUrl,
+    input_message_content: {
+      message_text: messageText,
+      parse_mode: options.parseMode || 'HTML',
+    },
+    reply_markup: options.keyboard ? { inline_keyboard: options.keyboard } : undefined,
+  };
+}
+
+// Prebuilt result: "Create Business Profile" — this is what shows up when
+// someone types your bot's @username with no other query.
+function createBusinessInlineResult() {
+  return inlineArticleResult(
+    'create-business',
+    'Create Business Profile',
+    `Tap below to set up your business profile.`,
+    {
+      description: 'Set up your business profile and start collecting ratings',
+      keyboard: [[{ text: 'Create Business Profile', url: `https://t.me/${config.BOT_USERNAME}?start=setup` }]],
+    }
+  );
+}
+
 module.exports = {
   createBot,
   generateToken,
@@ -146,4 +191,7 @@ module.exports = {
   developerMenuKeyboard,
   backButton,
   starKeyboard,
+  answerInlineQuery,
+  inlineArticleResult,
+  createBusinessInlineResult,
 };
