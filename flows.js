@@ -61,6 +61,13 @@ async function handleStart(bot, msg, payload) {
 
   await touchBotUser(from);
 
+  // Reserved payload: /start setup (used by the inline "Create Business
+  // Profile" result) jumps straight to the owner setup menu instead of
+  // being treated as a rating-link token.
+  if (payload === 'setup') {
+    return showSetupMenu(bot, session, from);
+  }
+
   if (payload) {
     return startClientRatingFlow(bot, session, from, payload);
   }
