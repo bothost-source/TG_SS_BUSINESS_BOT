@@ -23,6 +23,23 @@ async function main() {
   });
 
   // -------------------------------------------------------------------
+  // Inline queries: typing "@yourbotusername" in any chat shows a
+  // "Create Business Profile" result. Tapping it sends a message with a
+  // button that deep-links back into this bot at /start setup, which
+  // flows.handleStart needs to route to the setup:start flow (see note
+  // below the file).
+  // -------------------------------------------------------------------
+  bot.on('inline_query', async (ctx) => {
+    const query = ctx.inlineQuery;
+    try {
+      const results = [tg.createBusinessInlineResult()];
+      await tg.answerInlineQuery(bot, query.id, results);
+    } catch (err) {
+      console.error('Error handling inline_query:', err);
+    }
+  });
+
+  // -------------------------------------------------------------------
   // Callback queries (all inline button presses)
   // -------------------------------------------------------------------
   bot.on('callback_query', async (ctx) => {
